@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/post.dart';
+import '../utils/html_utils.dart';
 
 class PostSearchDelegate extends SearchDelegate {
   final List<Post> posts;
@@ -30,12 +31,12 @@ class PostSearchDelegate extends SearchDelegate {
 
   @override
   Widget buildResults(BuildContext context) {
-    final results = posts.where((post) => post.title.toLowerCase().contains(query.toLowerCase())).toList();
+    final results = posts.where((post) => sanitizeForSearch(post.title).contains(query.toLowerCase())).toList();
     return ListView.builder(
       itemCount: results.length,
       itemBuilder: (context, index) {
         return ListTile(
-          title: Text(results[index].title),
+          title: Text(stripHtml(results[index].title)),
           onTap: () {
             close(context, results[index]);
           },
@@ -46,14 +47,14 @@ class PostSearchDelegate extends SearchDelegate {
 
   @override
   Widget buildSuggestions(BuildContext context) {
-    final suggestions = posts.where((post) => post.title.toLowerCase().contains(query.toLowerCase())).toList();
+    final suggestions = posts.where((post) => sanitizeForSearch(post.title).contains(query.toLowerCase())).toList();
     return ListView.builder(
       itemCount: suggestions.length,
       itemBuilder: (context, index) {
         return ListTile(
-          title: Text(suggestions[index].title),
+          title: Text(stripHtml(suggestions[index].title)),
           onTap: () {
-            query = suggestions[index].title;
+            query = stripHtml(suggestions[index].title);
           },
         );
       },

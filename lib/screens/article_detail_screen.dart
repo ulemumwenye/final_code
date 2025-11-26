@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/article.dart';
+import '../utils/html_utils.dart';
 
 class ArticleDetailScreen extends StatelessWidget {
   final Article article;
@@ -10,7 +11,7 @@ class ArticleDetailScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(article.title),
+        title: Text(stripHtml(article.title)),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
@@ -20,7 +21,7 @@ class ArticleDetailScreen extends StatelessWidget {
             Image.network(article.imageUrl),
             const SizedBox(height: 16),
             Text(
-              article.title,
+              stripHtml(article.title),
               style: Theme.of(context).textTheme.headlineSmall,
             ),
             const SizedBox(height: 8),
@@ -29,7 +30,7 @@ class ArticleDetailScreen extends StatelessWidget {
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 16),
-            Text(article.description),
+            Text(stripHtml(article.description)),
           ],
         ),
       ),

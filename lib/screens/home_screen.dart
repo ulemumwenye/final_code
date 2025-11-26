@@ -7,6 +7,9 @@ import '../models/category.dart';
 import '../models/post.dart';
 import '../services/wordpress_service.dart';
 import '../services/facebook_service.dart'; // Import Facebook service
+import '../utils/html_utils.dart';
+import '../screens/settings_screen.dart';
+import '../services/user_prefs.dart';
 import '../screens/post_detail_screen.dart';
 import '../screens/post_search_delegate.dart';
 import '../screens/facebook_live_screen.dart'; // Import the Facebook Live screen
@@ -117,6 +120,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   List<Post> _currentFeaturedPosts = []; // Holds current featured posts for the slider
   bool _isLiveNow = false; // Track if Nation Online is currently live
   Timer? _liveCheckTimer; // Timer for checking live status
+  String? _userName; // Personalized user name stored in prefs
 
   @override
   void initState() {
@@ -167,6 +171,76 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     
     // Start checking for live broadcasts (but less frequently to avoid false indicators)
     _startLiveStatusMonitoring();
+
+    // Load user name and prompt if missing
+    _loadUserName();
+  }
+
+  Future<void> _loadUserName() async {
+    try {
+      final name = await UserPrefs.getUserName();
+      if (mounted) {
+        setState(() {
+          _userName = name;
+        });
+      }
+      if (name == null || name.trim().isEmpty) {
+        // Ask for name after the first frame to ensure context is ready
+        WidgetsBinding.instance.addPostFrameCallback((_) => _askForName());
+      }
+    } catch (e) {
+      // ignore errors silently
+    }
+  }
+
+  Future<void> _askForName() async {
+    final controller = TextEditingController();
+    final result = await showDialog<String?>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Welcome'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('What is your name?'),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                decoration: const InputDecoration(
+                  hintText: 'Enter your name',
+                ),
+                autofocus: true,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(null);
+              },
+              child: const Text('Skip'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final v = controller.text.trim();
+                if (v.isNotEmpty) Navigator.of(context).pop(v);
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (result != null && result.trim().isNotEmpty) {
+      await UserPrefs.setUserName(result.trim());
+      if (mounted) setState(() => _userName = result.trim());
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Hello, ${result.trim()}')));
+      }
+    }
   }
 
   void _startLiveStatusMonitoring() {
@@ -349,7 +423,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         );
         break;
       case 4:
-        _showSocialMediaPopup();
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const SettingsScreen()),
+        );
         break;
     }
   }
@@ -570,24 +647,28 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   margin: const EdgeInsets.symmetric(horizontal: 8),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(12),
-                    child: CachedNetworkImage(
-                      imageUrl: post.imageUrl,
+                    child: SizedBox(
                       width: 120,
-                      height: double.infinity, // Height is determined by parent SizedBox (150)
-                      fit: BoxFit.cover,
-                      placeholder: (context, url) => const SizedBox(
+                      height: 150, // fixed height to avoid stretching
+                      child: CachedNetworkImage(
+                        imageUrl: post.imageUrl,
                         width: 120,
-                        height: 150, // Match the SizedBox height for popular articles
-                        child: Center(child: RotatingSplashImage(size: 30.0)),
+                        height: 150,
+                        fit: BoxFit.cover,
+                        placeholder: (context, url) => const SizedBox(
+                          width: 120,
+                          height: 150, // Match the SizedBox height for popular articles
+                          child: Center(child: RotatingSplashImage(size: 30.0)),
+                        ),
+                        errorWidget: (context, url, error) => Container(
+                          width: 120,
+                          height: 150, // Match the SizedBox height
+                          color: Colors.grey[200],
+                          child: const Center(child: Icon(Icons.error, color: Colors.grey, size: 30.0)),
+                        ),
+                        memCacheHeight: (150 * MediaQuery.of(context).devicePixelRatio).round(),
+                        memCacheWidth: (120 * MediaQuery.of(context).devicePixelRatio).round(),
                       ),
-                      errorWidget: (context, url, error) => Container(
-                        width: 120,
-                        height: 150, // Match the SizedBox height
-                        color: Colors.grey[200],
-                        child: const Center(child: Icon(Icons.error, color: Colors.grey, size: 30.0)),
-                      ),
-                      memCacheHeight: (150 * MediaQuery.of(context).devicePixelRatio).round(),
-                      memCacheWidth: (120 * MediaQuery.of(context).devicePixelRatio).round(),
                     ),
                   ),
                 ),
@@ -690,6 +771,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               showSearch(context: context, delegate: PostSearchDelegate(_posts));
             },
           ),
+          IconButton(
+            icon: const Icon(Icons.person),
+            tooltip: 'Set Name',
+            onPressed: () {
+              _askForName();
+            },
+          ),
           TextButton(
             onPressed: () {
               _launchUrl('https://mwnation.com/epaper/membership/');
@@ -730,27 +818,85 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             // Debugging: Print the drawer categories
             print('Drawer Categories: $drawerCategories');
 
-            return ListView.builder(
-              itemCount: drawerCategories.length,
-              itemBuilder: (context, index) {
-                final category = drawerCategories[index];
-                return ListTile(
-                  title: Text(category.name),
+            return ListView(
+              padding: EdgeInsets.zero,
+              children: [
+                DrawerHeader(
+                  decoration: BoxDecoration(color: Colors.blueAccent),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 28,
+                        backgroundColor: Colors.white,
+                        child: Icon(Icons.person, size: 32, color: Colors.blueAccent),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _userName != null && _userName!.isNotEmpty ? 'Hello, $_userName' : 'Welcome!',
+                              style: const TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 6),
+                            Row(
+                              children: [
+                                TextButton.icon(
+                                  style: TextButton.styleFrom(foregroundColor: Colors.white),
+                                  onPressed: () => _askForName(),
+                                  icon: const Icon(Icons.edit, size: 16),
+                                  label: Text(_userName != null && _userName!.isNotEmpty ? 'Change Name' : 'Set Name'),
+                                ),
+                                if (_userName != null && _userName!.isNotEmpty) ...[
+                                  const SizedBox(width: 8),
+                                  TextButton(
+                                    style: TextButton.styleFrom(foregroundColor: Colors.white),
+                                    onPressed: () async {
+                                      await UserPrefs.clearUserName();
+                                      if (mounted) setState(() => _userName = null);
+                                      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Name cleared')));
+                                    },
+                                    child: const Text('Clear'),
+                                  ),
+                                ]
+                              ],
+                            )
+                          ],
+                        ),
+                      )
+                    ],
+                  ),
+                ),
+                ...drawerCategories.map((category) {
+                  return ListTile(
+                    title: Text(category.name),
+                    onTap: () {
+                      int tabIndex = _mainCategoryList.indexWhere((c) => c.id == category.id);
+                      if (tabIndex != -1) {
+                        _tabController?.animateTo(tabIndex);
+                        _onCategorySelected(category.id, category.name);
+                      } else {
+                        _onCategorySelected(category.id, category.name);
+                      }
+                      Navigator.pop(context); // Close the drawer
+                    },
+                  );
+                }).toList(),
+                const Divider(),
+                ListTile(
+                  leading: const Icon(Icons.settings),
+                  title: const Text('Settings'),
                   onTap: () {
-                    // Find if this category is one of the main categories (it shouldn't be by this logic)
-                    // Or if you want to switch tabs from drawer:
-                    int tabIndex = _mainCategoryList.indexWhere((c) => c.id == category.id);
-                    if (tabIndex != -1) {
-                      _tabController?.animateTo(tabIndex);
-                      _onCategorySelected(category.id, category.name);
-                    } else {
-                      // Handle selection of a non-main category (e.g., load its posts directly)
-                      _onCategorySelected(category.id, category.name);
-                    }
-                    Navigator.pop(context); // Close the drawer
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const SettingsScreen()),
+                    );
                   },
-                );
-              },
+                ),
+              ],
             );
           },
         ),
@@ -899,7 +1045,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    post.title,
+                                    stripHtml(post.title),
                                     style: const TextStyle(
                                       fontSize: 18,
                                       fontWeight: FontWeight.bold,
@@ -910,7 +1056,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                   ),
                                   const SizedBox(height: 8),
                                   Text(
-                                    post.excerpt,
+                                    stripHtml(post.excerpt),
                                     style: TextStyle(
                                       fontSize: 14,
                                       color: Colors.grey[600],
@@ -967,7 +1113,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           BottomNavigationBarItem(icon: Icon(Icons.video_library), label: 'Youtube'),
           BottomNavigationBarItem(icon: Icon(Icons.mic), label: 'Podcasts'),
           BottomNavigationBarItem(icon: Icon(Icons.live_tv), label: 'Streams'),
-          BottomNavigationBarItem(icon: Icon(Icons.more_horiz), label: 'More'),
+          BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Settings'),
         ],
       ),
       floatingActionButton: Column(

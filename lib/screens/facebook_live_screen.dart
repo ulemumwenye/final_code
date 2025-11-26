@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/facebook_live.dart';
 import '../services/facebook_service.dart';
+import '../utils/html_utils.dart';
 
 class FacebookLiveScreen extends StatefulWidget {
   const FacebookLiveScreen({super.key});
@@ -242,7 +243,7 @@ class _FacebookLiveScreenState extends State<FacebookLiveScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    liveVideo.title,
+                    stripHtml(liveVideo.title),
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
@@ -254,7 +255,7 @@ class _FacebookLiveScreenState extends State<FacebookLiveScreen> {
                   const SizedBox(height: 8),
                   if (liveVideo.description.isNotEmpty)
                     Text(
-                      liveVideo.description,
+                      stripHtml(liveVideo.description),
                       style: TextStyle(
                         fontSize: 14,
                         color: Colors.grey[600],
